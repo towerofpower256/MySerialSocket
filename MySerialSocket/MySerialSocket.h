@@ -19,9 +19,29 @@ const char MSS_MSGPFX_RXMODE = 'x';
 const char MSS_RXMODE_TEXT = 't';
 const char MSS_RXMODE_BINARY = 'b';
 
+const char MSS_WEB[] = {R"==(
+<html>
+<head>
+<title>MySerialSocket</title>
+</head>
+<body onload="_onLoad()">
+<script>
+function _onLoad() {
+  var elem = document.getElementById("ui-link");
+  if (elem) {
+    elem.setAttribute("href", (elem.getAttribute("href") || "")+ "?c=" + location.hostname);
+  }
+}
+</script>
+<h1>MySerialSocket</h1>
+<p><a id="ui-link" href="https://towerofpower256.githib.io/MySerialSocket/ui">Open the UI</a></p>
+</body>
+</html>
+)=="};
+
 class MySerialSocket : public Print {
   public:
-    void begin(AsyncWebServer *server, const char* socketUrl = "/ws");
+    void begin(AsyncWebServer *server, const char * webUrl = "/", const char* socketUrl = "/ws");
 
     void onMsgRecv(void (*msgCallback)(uint8_t *data, size_t len));
     void onBaudRateChange(void (*brCallback)(unsigned long baud));

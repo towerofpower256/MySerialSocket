@@ -95,20 +95,18 @@ AsyncWebSocketMessageBuffer* MySerialSocket::_bufferRxMode() {
 
 
 // Setup
-void MySerialSocket::begin(AsyncWebServer *server, const char* socketUrl) {
+void MySerialSocket::begin(AsyncWebServer *server, const char * webUrl, const char* socketUrl) {
   _rxMode = MSS_RXMODE_TEXT;
   _server = server;
   _ws = new AsyncWebSocket(socketUrl);
 
   // Send the web page
-  /*
-  _server->on(url, HTTP_GET, [](AsyncWebServerRequest *request){
+  _server->on(webUrl, HTTP_GET, [](AsyncWebServerRequest *request){
       // Send Webpage
-      AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", WEBSERIAL_HTML, WEBSERIAL_HTML_SIZE);
-      response->addHeader("Content-Encoding","gzip");
+      AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", (const uint8_t*)MSS_WEB, strlen(MSS_WEB));
+      //response->addHeader("Content-Encoding","gzip");
       request->send(response);        
   });
-  */
 
   _ws->onEvent([&](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
     //WS_EVT_CONNECT, WS_EVT_DISCONNECT, WS_EVT_PONG, WS_EVT_ERROR, WS_EVT_DATA

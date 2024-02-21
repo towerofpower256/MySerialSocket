@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MySerialSocket</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="index.css">
+    <script type="text/javascript" src="MySocketSerial.js"></script>
+</head>
+
+<body onload="_onload()">
+    <script>
+        var mss = new MySocketSerial();
+
+        mss.onStateChange((newState) => {
+            document.getElementById("ws-state").innerText = newState;
+        });
+
+        mss.onPrint((data) => {
+
+            var termElem = document.getElementById("term-output");
+            if (termElem) {
+                termElem.value += data;
+                termElem.scrollTop = termElem.scrollHeight;
+            }
+        });
+
+        mss.onBaudRateChange((newBaud) => {
+            document.getElementById("rx-baud").value = newBaud;
+        });
+
+        mss.onTxModeChange((newMode) => {
+
+        })
+
+        mss.onConnect(() => {
+
+        })
+
+        function _connect() {
+            var hostValue = document.getElementById("ws-host").value;
+            if (!hostValue || hostValue == "") {
+                console.log("Can't connect: empty URL");
+                return;
+            }
+
+            saveHostValue();
+
+            mss.connect(hostValue);
+        }
+
+        function _onload() {
+            loadHostValue();
+            loadNewlineMode();
+            mss.begin();
+        }
+
+        function _send() {
+            var inputValue = document.getElementById("term-input").value;
+            mss.send(inputValue);
+            _clearInput();
+        }
+
+        function _clearInput() {
+            document.getElementById("term-input").value = "";
+        }
+
+        function saveHostValue() {
+            if (localStorage) {
+                localStorage.setItem("mss.hostname", document.getElementById("ws-host").value);
+            }
+        }
+
+        function loadHostValue() {
+            var hostValue = "";
+
+            var parms = new URLSearchParams(window.location.search);
+            hostValue = parms.get("c");
+
+            if (localStorage && (typeof hostValue != "string" || hostValue == "")) {
+                hostValue = localStorage.getItem("mss.hostname");
+            }
+
+            document.getElementById("ws-host").value = hostValue;
+        }
+
+        function loadNewlineMode() {
+            if (localStorage) {
+                document.getElementById("term-newline").value = localStorage.getItem("mss.newlinemode") || "none";
+            }
+        }
+
+        function saveNewlineMode() {
+            if (localStorage) {
+                localStorage.setItem("mss.newlinemode", document.getElementById("term-newline").value);
+            }
+        }
+
+        function setBaud() {
+            var newBaud = document.getElementById("rx-baud").value;
+            if (newBaud) mss.setBaudRate(newBaud);
+        }
+
+        function setLineEndMode() {
+            var newMode = document.getElementById("term-newline").value;
+            if (newMode) mss.setLineEndMode(newMode);
+            saveNewlineMode();
+        }
+    </script>
+    <div class="section">
+        <div>MySerialSocket</div>
+        <div>By David McDonald 2024</div>
+    </div>
+    <div class="section">
+        <div>Connection</div>
+    </div>
+    <div class="section flex">
+        <div class="f-grow-1">
+            <input id="ws-host" class="w-100" type="text" placeholder="ws://server:port/ws" />
+        </div>
+        <button onclick="_connect();">Connect</button>
+        <button onclick="mss.disconnect();">Disconnect</button>
+    </div>
+    <div class="section">
+        <b>Status:</b> <span id="ws-state">starting</span>
+    </div>
+
+    <div class="section-separator"></div>
+
+    <div class="section">
+        <div class="flex">
+            <div class="f-grow-1">
+                <input onkeypress="if (event.key == 'Enter') { event.preventDefault(); _send()}" class="w-100"
+                    id="term-input" />
+            </div>
+            <button onclick="_send()">Send</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <textarea id="term-output" class="w-100" onchange="event.target.scrollTop = event.target.scrollHeight;"
+            readonly="true" rows="10"></textarea>
+    </div>
+    
+    <div class="section">
+        <button id="term-clear" onclick="mss.clearTerminal()">Clear terminal</button>
+        <select id="term-newline" onchange="setLineEndMode()">
+            <option value="none">No line ending</option>
+            <option value="n" selected>Newline (\n)</option>
+            <option value="r">Carriage return (\r)</option>
+            <option value="nr">Both (\n\r)</option>
+        </select>
+    </div>
+
+    <div class="section-separator"></div>
+
+    <div class="section">
+        <button id="rx-mode-text" class="btn" onclick="mss.setTxModeText()">Set Tx mode - text</button>
+        <button id="rx-mode-binary" class="btn" onclick="mss.setTxModeBinary()">Set Tx mode - binary</button>
+    </div>
+    <div class="section">
+        <button id="rx-mode-text" class="btn" onclick="mss.setRxModeText()">Set Rx mode - text</button>
+        <button id="rx-mode-binary" class="btn" onclick="mss.setRxModeBinary()">Set Rx mode - binary</button>
+    </div>
+    <div class="section">
+        <div>Baud rate</div>
+        <select id="rx-baud">
+            <option value="300">300</option>
+            <option value="1200">1200</option>
+            <option value="2400">2400</option>
+            <option value="4800">4800</option>
+            <option value="9600">9600</option>
+            <option value="19200">19200</option>
+            <option value="38400">38400</option>
+            <option value="57600">57600</option>
+            <option value="74880">74880</option>
+            <option value="115200">115200</option>
+            <option value="230400">230400</option>
+            <option value="250000">250000</option>
+            <option value="500000">500000</option>
+            <option value="1000000">1000000</option>
+            <option value="2000000">2000000</option>
+        </select>
+        <button id="rx-baud-set" onclick="mss.setBaudRate()">Set baud</button>
+    </div>
+</body>
+
+</html>

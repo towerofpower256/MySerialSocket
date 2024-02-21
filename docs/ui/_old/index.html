@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MySerialSocket</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="index.css">
+    <script type="text/javascript" src="MySocketSerial.js"></script>
+</head>
+
+<body onload="mss.begin()" onunload="mss.dispose()">
+    <script type="text/javascript">
+        var SOCK_STATE_CONNECTING = 0;
+        var SOCK_STATE_OPEN = 1;
+        var SOCK_STATE_CLOSING = 2;
+        var SOCK_STATE_CLOSED = 3;
+
+        var MSS_RXMODE_TEXT = 't';
+        var MSS_RXMODE_BINARY = 'b';
+
+        var MSS_IOMODE_TEXT = "t";
+        var MSS_IOMODE_BINARY = "b";
+
+        var MSS_LE_NONE = "none";
+        var MSS_LE_N = "n";
+        var MSS_LE_R = "r";
+        var MSS_LE_NR = "nr";
+
+        var MSS_MSGPFX_RX = 'r';
+        var MSS_MSGPFX_TX = 't';
+        var MSS_MSGPFX_BAUDRATE = 'b';
+        var MSS_MSGPFX_RXMODE = 'x';
+
+        class MySocketSerial {
+            constructor() {
+                this.hasError = false;
+                this.error = undefined;
+                this.socket = undefined;
+                this.iomode = MSS_IOMODE_TEXT;
+                this.lineEndMode = MSS_LE_N;
+                this.lastMsgType = undefined;
+            }
+
+            setState(state) {
+                console.log("SetState", state);
+                this.state = state;
+
+                if (this.stateElement) {
+                    this.stateElement.innerHTML = this.state;
+                }
+            }
+
+            begin() {
+                console.log("Starting");
+
+                this.stateElement = document.getElementById("ws-state");
+                this.hostElement = document.getElementById("ws-host");
+                this.terminalOutputElement = document.getElementById("term-output");
+                this.terminalInputElement = document.getElementById("term-input");
+                this.rxBaudRateElement = document.getElementById("rx-baud");
+                this.rxModeElement = document.getElementById("term-io-mode");
+
+                this.setState("disconnected");
+                this.loadHostValue();
+            }
+
+            setIOMode(a, silent = false) {
+                this.iomode = a || MSS_IOMODE_TEXT;
+                if (!silent) this.printInfo("IO mode set: " + a);
+                this.rxModeElement.value = this.iomode;
+            }
+
+            setError(err) {
+                this.hasError = true;
+                this.error = err;
+
+                this.println("ERROR");
+                this.printInfo(err);
+            }
+
+            clearError() {
+                this.hasError = false;
+                this.error = undefined;
+            }
+
+            connect() {
+                if (this.state != "disconnected") {
+                    throw ("Tried to connect but already connecting / connected");
+                }
+
+                var hostValue = this.hostElement.value;
+                if (!hostValue || hostValue == "") {
+                    console.log("Can't connect: empty URL");
+                    return;
+
+                }
+
+                try {
+                    this.setState("connecting");
+                    this.saveHostValue();
+                    this.clearError();
+                    this.socket = new WebSocket(hostValue, "myprotocol");
+                    this.socket.binaryType = "arraybuffer";
+
+                    this.socket.onopen = (ev) => {
+                        console.log("onopen", ev);
+
+                        this.setState("connected");
+                        this.printInfo("CONNECTED");
+                    };
+
+                    this.socket.onclose = (ev) => {
+                        console.log("onclose", ev);
+
+                        this.setState("disconnected");
+                        this.printInfo("DISCONNECTED");
+                    };
+
+                    this.socket.onerror = (ev) => {
+                        console.error("onerror", ev);
+                        this.printInfo("SOCKET ERROR");
+                    };
+
+                    this.socket.onmessage = (ev) => {
+                        console.log("Message", ev);
+
+                        // Text
+                        // Read it, looking for the prefix
+                        if (typeof ev.data == "string" && ev.data.length > 0) {
+                            var prefix = ev.data[0];
+                            if (prefix == MSS_MSGPFX_RX) {
+                                this.printRx(ev.data.substr(1));
+                            }
+                            if (prefix == MSS_MSGPFX_TX) {
+                                this.printTx(ev.data.substr(1));
+                            }
+                            if (prefix == MSS_MSGPFX_RXMODE) {
+                                var newMode = ev.data.substr(1, 1);
+                                this.printInfo("New Rx mode: " + newMode);
+                                this.setIOMode(newMode);
+                            }
+                            if (prefix == MSS_MSGPFX_BAUDRATE) {
+                                var newBaud = ev.data.substring(1);
+                                this.printInfo("Baud rate set: " + newBaud);
+                                this.updateBaudRate(newBaud);
+                            }
+                        }
+
+                        // Binary
+                        // Convert to HEX and dump to the terminal
+                        if (ev.data instanceof ArrayBuffer) {
+                            // Check the prefix
+                            var dataArr = new Uint8Array(ev.data);
+                            var prefix = dataArr[0];
+                            if (prefix == MSS_MSGPFX_RX.charCodeAt(0)) {
+                                var dataAsHex = this.convertBytesToHex(ev.data, 1);
+                                // TODO print prefix
+                                this.printRx(dataAsHex);
+                            } else if (prefix == MSS_MSGPFX_TX.charCodeAt(0)) {
+                                // TODO print prefix
+                                var dataAsHex = this.convertBytesToHex(ev.data, 1);
+                                this.printTx(dataAsHex);
+                            } else {
+                                throw ("Unknown prefix in binary message");
+                            }
+
+
+                        }
+                    };
+                }
+                catch (err) {
+                    this.state = "disconnected";
+                    this.setError(err);
+                    console.error(err);
+
+                    return;
+                }
+
+            }
+
+            dispose() {
+                this.disconnect();
+            }
+
+            // Function to convert HEX bytes into numerical bytes.
+            // Must be groups of 2 hex digits each, worth a byte.
+            // Can have spaces between bytes.
+            // Examples
+            // A2
+            // A2 C5 42
+            // A2C542
+            // a2C542
+            convertHexToBytes(a, prefixChar = "") {
+                var formatTest = /^(([a-fA-F0-9]){2}( )*)+$/.test(a);
+                if (!formatTest) {
+                    throw "Invalid hex byte format, must be a string of byte-pairs of hexadecimal digits";
+                }
+
+                // Remove all space characters
+                a = a.replace(/ /g, "");
+
+                // Build the array
+                var arr = [prefixChar.charCodeAt(0)];
+                var i = 0;
+                while (i < a.length) {
+                    var slice = a.substr(i, 2);
+                    // Did we get 2 character, or was it short? It shouldn't be, but check anyway
+                    if (slice.length == 2) {
+
+                    }
+
+                    var byte = parseInt(slice, 16);
+                    if (isNaN(byte)) {
+                        throw "Value is not a hex byte-pair: " + slice;
+                    }
+
+                    arr.push(byte);
+
+                    i += 2;
+                }
+
+                var r = new Uint8Array(arr);
+                return r;
+            }
+
+            // Convert a payload of bytes into a string of hex byte-pairs.
+
+            convertBytesToHex(buffer, startIdx = 0) {
+                if (!(buffer instanceof ArrayBuffer)) {
+                    throw ("Can only convert a Uint8Array to a hex string");
+                }
+
+                var arr = new Uint8Array(buffer);
+
+                var r = [];
+                for (var i = startIdx; i < arr.length; i++) {
+                    r.push(arr[i].toString(16).padStart(2, '0').toUpperCase());
+                }
+
+                return r.join(" ") + " ";
+            }
+
+            disconnect() {
+                if (this.socket) {
+                    this.socket.close();
+                    delete this.socket;
+                }
+            }
+
+            saveHostValue() {
+                if (localStorage) {
+                    localStorage.setItem("mss.hostname", this.hostElement.value);
+                }
+            }
+
+            loadHostValue() {
+                if (localStorage) {
+                    this.hostElement.value = localStorage.getItem("mss.hostname");
+                }
+            }
+
+            print(data = "") {
+                var termElem = this.terminalOutputElement;
+                if (termElem) {
+                    termElem.value += data;
+                    termElem.scrollTop = termElem.scrollHeight;
+                }
+            }
+
+            println(data) {
+                this.print(data);
+                this.print("\n");
+            }
+
+            printInfo(data) {
+                this.lastMsgType = undefined;
+                this.printInfoPrefix();
+                this.println(data);
+            }
+
+            printInfoPrefix() {
+                this.print("# ");
+            }
+
+            printTx(data) {
+                if (this.lastMsgType != MSS_MSGPFX_TX) {
+                    this.println();
+                    this.printTxPrefix();
+                    this.lastMsgType = MSS_MSGPFX_TX;
+                }
+                this.print(data);
+            }
+
+            printRx(data) {
+                if (this.lastMsgType != MSS_MSGPFX_RX) {
+                    this.println();
+                    this.printRxPrefix();
+                    this.lastMsgType = MSS_MSGPFX_RX;
+                }
+                this.print(data);
+            }
+
+            printTxPrefix() {
+                this.print("< ");
+            }
+
+            printRxPrefix() {
+                this.print("> ");
+            }
+
+            send() {
+                var data = this.terminalInputElement.value;
+                if (!data || data == "") return;
+
+                try {
+
+                
+                if (this.socket && this.state == "connected") {
+                    if (this.iomode == MSS_IOMODE_BINARY) {
+                        var binPayload = this.convertHexToBytes(data, MSS_MSGPFX_TX);
+                        this.socket.send(binPayload);
+                    } else {
+                        var _data = MSS_MSGPFX_TX + data;
+
+                        switch (this.lineEndMode) {
+                            case MSS_LE_NONE:
+                                break;
+                            case MSS_LE_N:
+                                _data = _data + "\n";
+                                break;
+                            case MSS_LE_R:
+                                _data = _data + "\r";
+                                break;
+                            case MSS_LE_NR:
+                                _data = _data + "\n\r";
+                                break;
+                        }
+
+                        this.socket.send(_data);
+                    }
+
+
+
+                    this.terminalInputElement.value = "";
+                    return true;
+                }
+            } catch (err) {
+                this.printInfo("ERROR: "+err);
+                throw err;
+            }
+            }
+
+            clearTerminal() {
+                if (this.terminalOutputElement) {
+                    this.terminalOutputElement.value = "";
+                }
+            }
+
+            setRxMode(newMode) {
+                var _newMode = String(newMode).substring(0, 1);
+                this.socket.send(MSS_MSGPFX_RXMODE + _newMode);
+            }
+
+            updateBaudRate(newBaud) {
+                this.rxBaudRateElement.value = newBaud;
+            }
+
+            setBaudRate() {
+                var baudRate = this.rxBaudRateElement.value;
+                this.socket.send(MSS_MSGPFX_BAUDRATE + String(newBaud));
+            }
+        }
+
+
+
+        var mss = new MySocketSerial();
+
+    </script>
+
+    <div class="mss-body">
+        <div class="mss-heading">
+            MySerialSocket
+        </div>
+        <div class="mss-section">
+            <div class="mss-section-head">Connection</div>
+            <div>
+                <div>Server</div>
+                <input id="ws-host" type="text" placeholder="ws://server:port/ws" />
+            </div>
+            <button onclick="mss.connect();">Connect</button>
+            <button onclick="mss.disconnect();">Disconnect</button>
+            <div>
+                <b>Status:</b> <span id="ws-state">starting</span>
+            </div>
+        </div>
+        <div class="mss-section">
+            <div>
+                <button id="term-clear" class="w-100" onclick="mss.clearTerminal()">Clear</button>
+            </div>
+            <div>
+                <textarea id="term-output" class="w-100" onchange="event.target.scrollTop = event.target.scrollHeight;"
+                    readonly="true" rows="10"></textarea>
+            </div>
+            <input id="term-input" />
+            <button onclick="mss.send()">Send</button>
+        </div>
+        <div>
+            <div>Line ending:</div>
+            <select id="term-newline" onchange="">
+                <option value="none">No line ending</option>
+                <option value="n" selected>Newline (\n)</option>
+                <option value="r">Carriage return (\r)</option>
+                <option value="nr">Both (\n\r)</option>
+            </select>
+        </div>
+        <div>
+            <div>IO mode:</div>
+            <select id="term-io-mode" onchange="mss.setIOMode(event.target.value)">
+                <option value="t" selected>Text</option>
+                <option value="b">Binary</option>
+            </select>
+        </div>
+        <div>
+            <button id="rx-mode-text" class="btn" onclick="mss.setRxMode(MSS_RXMODE_TEXT)">Set Rx mode -
+                text</button>
+            <button id="rx-mode-binary" class="btn" onclick="mss.setRxMode(MSS_RXMODE_BINARY)">Set Rx mode -
+                binary</button>
+        </div>
+        <div>
+            Baud rate
+            <select id="rx-baud">
+                <option value="300">300</option>
+                <option value="1200">1200</option>
+                <option value="2400">2400</option>
+                <option value="4800">4800</option>
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="74880">74880</option>
+                <option value="115200">115200</option>
+                <option value="230400">230400</option>
+                <option value="250000">250000</option>
+                <option value="500000">500000</option>
+                <option value="1000000">1000000</option>
+                <option value="2000000">2000000</option>
+            </select>
+            <button id="rx-baud-set" onclick="mss.setBaudRate()">Set baud</button>
+        </div>
+    </div>
+</body>
+
+</html>
