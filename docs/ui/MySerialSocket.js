@@ -19,7 +19,7 @@ var MSS_MSGPFX_TX = 't';
 var MSS_MSGPFX_BAUDRATE = 'b';
 var MSS_MSGPFX_RXMODE = 'x';
 
-class MySocketSerial {
+class MySerialSocket {
     constructor() {
         this.hasError = false;
         this.error = undefined;
@@ -196,11 +196,11 @@ class MySocketSerial {
                     if (prefix == MSS_MSGPFX_RX.charCodeAt(0)) {
                         var dataAsHex = this.convertBytesToHex(ev.data, 1);
                         // TODO print prefix
-                        this.printRx(dataAsHex);
+                        this.printRx(dataAsHex, true);
                     } else if (prefix == MSS_MSGPFX_TX.charCodeAt(0)) {
                         // TODO print prefix
                         var dataAsHex = this.convertBytesToHex(ev.data, 1);
-                        this.printTx(dataAsHex);
+                        this.printTx(dataAsHex, true);
                     } else {
                         throw ("Unknown prefix in binary message");
                     }
@@ -305,8 +305,8 @@ class MySocketSerial {
         this.print("# ");
     }
 
-    printTx(data) {
-        if (this.lastMsgType != MSS_MSGPFX_TX) {
+    printTx(data, forcePrefix) {
+        if (forcePrefix || this.lastMsgType != MSS_MSGPFX_TX) {
             this.println();
             this.printTxPrefix();
             this.lastMsgType = MSS_MSGPFX_TX;
@@ -314,8 +314,8 @@ class MySocketSerial {
         this.print(data);
     }
 
-    printRx(data) {
-        if (this.lastMsgType != MSS_MSGPFX_RX) {
+    printRx(data, forcePrefix) {
+        if (forcePrefix || this.lastMsgType != MSS_MSGPFX_RX) {
             this.println();
             this.printRxPrefix();
             this.lastMsgType = MSS_MSGPFX_RX;

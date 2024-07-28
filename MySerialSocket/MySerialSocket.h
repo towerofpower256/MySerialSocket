@@ -1,4 +1,4 @@
-#define MSS_DEBUG 1
+#define MSS_DEBUG 0
 
 #include "Print.h"
 #if defined(ESP8266)
@@ -34,7 +34,7 @@ function _onLoad() {
 }
 </script>
 <h1>MySerialSocket</h1>
-<p><a id="ui-link" href="https://towerofpower256.githib.io/MySerialSocket/ui">Open the UI</a></p>
+<p><a id="ui-link" href="https://towerofpower256.github.io/MySerialSocket/ui">Open the UI</a></p>
 </body>
 </html>
 )=="};

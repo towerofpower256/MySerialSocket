@@ -1,4 +1,4 @@
-#define DEBUG 1
+#define DEBUG 0
 
 #if defined(ESP8266)
   #include <ESP8266WiFi.h>
@@ -10,6 +10,7 @@
   #include <ESPmDNS.h>
 #endif
 #include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
 
 #include "MySerialSocket.h";
 
@@ -106,8 +107,11 @@ void setup() {
   mss.setBaudRate(115200);
   mss.onMsgRecv(&cbRecvMsg);
   mss.onBaudRateChange(&cbSetBaudRate);
-  server.begin();
+  
+  AsyncElegantOTA.begin(&server);
 
+  // Start the server
+  server.begin();
 }
 
 void loop() {
